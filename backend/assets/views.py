@@ -23,7 +23,7 @@ class AssetListView(APIView):
     
 class AssetSyncView(APIView):
     def post(self, request, symbol):
-        # Get the Asset object for the specified symbol
+        # Validate that the asset exists before queueing the task
         get_object_or_404(Asset, symbol=symbol)
 
         # Call the sync_asset_prices task

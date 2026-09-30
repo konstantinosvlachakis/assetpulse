@@ -6,6 +6,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+class TemporaryProviderError(Exception):
+    """Custom exception for temporary provider errors."""
+    pass
+
 
 class AlphaVantageProvider:
 
@@ -26,6 +30,9 @@ class AlphaVantageProvider:
             params=params,
             timeout=10,
         )
+        
+        if response.status_code == 503:
+            raise TemporaryProviderError("Alpha Vantage service is temporarily unavailable.")
         
         response.raise_for_status()
 
