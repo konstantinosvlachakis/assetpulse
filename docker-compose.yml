@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:17
+    container_name: assetpulse-db
+
+    environment:
+      POSTGRES_USER: assetpulse
+      POSTGRES_PASSWORD: assetpulse
+      POSTGRES_DB: assetpulse
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: assetpulse-redis
+
+    ports:
+      - "6380:6379"
+
+volumes:
+  postgres_data:
