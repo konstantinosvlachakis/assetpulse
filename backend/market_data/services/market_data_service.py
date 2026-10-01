@@ -12,19 +12,23 @@ class MarketDataService:
 
         print("Asset:", asset)
         print("Prices received:", len(daily_prices))
-
+        prices = []
         for price_data in daily_prices:
-            print("Saving:", price_data["date"])
-
-            obj, created = Price.objects.update_or_create(
-                asset=asset,
-                date=price_data["date"],
-                defaults={
-                    "open_price": price_data["open_price"],
-                    "high_price": price_data["high_price"],
-                    "low_price": price_data["low_price"],
-                    "close_price": price_data["close_price"],
-                },
+            prices.append(
+                Price(
+                    asset=asset,
+                    date=price_data["date"],
+                    open_price=price_data["open_price"],
+                    high_price=price_data["high_price"],
+                    low_price=price_data["low_price"],
+                    close_price=price_data["close_price"],
+                )
             )
 
-            print("Created:", created, "->", obj)
+        Price.objects.bulk_create(
+            prices,
+            update_conflicts=True,
+            update_fields=["open_price", "high_price", "low_price", "close_price"],
+            unique_fields=["asset", "date"],
+        )
+                   

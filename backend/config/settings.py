@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     # AssetPulse
     "assets",
     "market_data",
+    "portfolios",
 ]
 
 MIDDLEWARE = [
