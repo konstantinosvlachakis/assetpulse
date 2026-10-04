@@ -1,22 +1,22 @@
+from django.db.models import Prefetch
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from .models import Portfolio
+from .models import Portfolio, Position
+from .serializers import PortfolioSerializer
 # Create your views here.
 
 class PortfolioListView(APIView):
     def get(self, request):
-        portfolios = Portfolio.objects.all()
-        return  Response([{
-                    "id": portfolio.id,
-                    "name": portfolio.name,
-                } for portfolio in portfolios])
+        portfolios = Portfolio.objects.prefetch_related(Prefetch("positions", queryset=Position.objects.select_related("asset")))
+        serializer = PortfolioSerializer(portfolios, many=True)
+        
+        
+        return  Response(serializer.data)
 
 class PortfolioDetailView(APIView):
     def get(self, request, id):
         portfolio = Portfolio.objects.get(id=id)
-
-        return Response({
-            "id": portfolio.id,
-            "name": portfolio.name,
-        })
+        serializer = PortfolioSerializer(portfolio)
+        
+        return Response(serializer.data)
