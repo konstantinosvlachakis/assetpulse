@@ -16,7 +16,16 @@ class PortfolioListView(APIView):
 
 class PortfolioDetailView(APIView):
     def get(self, request, id):
-        portfolio = Portfolio.objects.get(id=id)
+        portfolio = (
+            Portfolio.objects
+            .prefetch_related(
+                Prefetch(
+                    "positions",
+                    queryset=Position.objects.select_related("asset"),
+                )
+            )
+            .get(id=id)
+        )
         serializer = PortfolioSerializer(portfolio)
         
         return Response(serializer.data)
