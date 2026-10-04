@@ -3,7 +3,7 @@ from django.db.models import Prefetch
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from backend.assets.models import Asset
+from assets.models import Asset
 
 from .models import Portfolio, Position
 from .serializers import PortfolioSerializer, BuyPositionSerializer
