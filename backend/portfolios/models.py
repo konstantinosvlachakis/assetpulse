@@ -3,6 +3,10 @@ from django.db import models
 from django.conf import settings
 
 # Create your models here.
+TRANSACTION_TYPES=[
+    ('buy', 'Buy'),
+    ('sell', 'Sell'),
+]
 
 class Portfolio(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="portfolios")
@@ -34,3 +38,24 @@ class Position(models.Model):
 
     def __str__(self):
         return f"{self.quantity} of {self.asset.symbol}"
+    
+    
+    
+
+
+class Transaction(models.Model):
+    asset = models.ForeignKey('assets.Asset', on_delete=models.PROTECT, related_name='transactions')
+    type =  models.CharField(max_length=4, choices=TRANSACTION_TYPES)
+    portfolio = models.ForeignKey(Portfolio, on_delete=models.CASCADE, related_name='transactions')
+    quantity = models.DecimalField(max_digits=20, decimal_places=4)
+    price = models.DecimalField(max_digits=20, decimal_places=4)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        constraints = [
+            models.CheckConstraint(check=models.Q(quantity__gt=0), name='quantity_positive'),
+            models.CheckConstraint(check=models.Q(price__gt=0), name='price_positive'),
+        ]
+        
+    def __str__(self):
+        return f"{self.type} {self.quantity} of {self.asset.symbol} at {self.price}"

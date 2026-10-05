@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from assets.models import Asset
 
-from .models import Portfolio, Position
+from .models import Portfolio, Position, Transaction
 from .serializers import PortfolioSerializer, BuyPositionSerializer
 # Create your views here.
 
@@ -49,7 +49,7 @@ class PositionView(APIView):
         with transaction.atomic():
             position, created = Position.objects.select_for_update().get_or_create(
                 portfolio=portfolio,
-                asset=Asset.objects.get(symbol=asset),
+                asset=asset,
                 defaults={"quantity": quantity, "average_price": price},
             )
 
@@ -62,5 +62,13 @@ class PositionView(APIView):
                 position.quantity = new_quantity
                 position.average_price = new_average_price
                 position.save()
+                
+            Transaction.objects.create(
+                asset=asset,
+                type='buy',
+                portfolio=portfolio,
+                quantity=quantity,
+                price=price
+            )
 
         return Response({"message": "Position updated successfully."})
