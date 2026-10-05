@@ -23,9 +23,17 @@ class PortfolioSerializer(serializers.ModelSerializer):
         
 
 
-class BuyPositionSerializer(serializers.Serializer):
+class PositionTransactionSerializer(serializers.Serializer):
     asset = serializers.CharField()
-    quantity = serializers.DecimalField(min_value=Decimal("0.0001"), max_digits=20, decimal_places=4)
-    price = serializers.DecimalField(max_digits=20, decimal_places=4, min_value=Decimal("0.0001"))
-    
-    
+
+    quantity = serializers.DecimalField(
+        min_value=Decimal("0.0001"),
+        max_digits=20,
+        decimal_places=4,
+    )
+
+    price = serializers.DecimalField(
+        min_value=Decimal("0.0001"),
+        max_digits=20,
+        decimal_places=4,
+    )

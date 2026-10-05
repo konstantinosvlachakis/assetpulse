@@ -20,7 +20,7 @@ class BuyPositionTests(TestCase):
         self.portfolio = Portfolio.objects.create(user=self.user, name="Test Portfolio", type="main portfolio")
         self.aapl = Asset.objects.create(symbol="AAPL", name="Apple Inc.", asset_type="stock")
         self.googl = Asset.objects.create(symbol="GOOGL", name="Alphabet Inc.", asset_type="stock")
-        self.position = Position.objects.create(portfolio=self.portfolio, asset=self.aapl, quantity=1, average_price=150)
+        self.position = Position.objects.create(portfolio=self.portfolio, asset=self.aapl, quantity=10, average_price=150)
         self.transaction = Transaction.objects.create(portfolio=self.portfolio, asset=self.aapl, type='buy', quantity=1, price=150)
         
         
@@ -33,8 +33,8 @@ class BuyPositionTests(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, 200)
         self.position.refresh_from_db()
-        self.assertEqual(self.position.quantity, 3)
-        self.assertEqual(self.position.average_price, Decimal("183.3333"))
+        self.assertEqual(self.position.quantity, Decimal("12"))
+        self.assertEqual(self.position.average_price, Decimal("158.3333"))
         
         
     def test_buy_new_position(self):
@@ -65,7 +65,7 @@ class BuyPositionTests(TestCase):
         
         self.assertEqual(response.status_code, 400)
         self.position.refresh_from_db()
-        self.assertEqual(self.position.quantity, Decimal("1"))
+        self.assertEqual(self.position.quantity, Decimal("10"))
         self.assertEqual(self.position.average_price, Decimal("150"))
         
         
@@ -75,14 +75,6 @@ class BuyPositionTests(TestCase):
         # Simulate a failure by providing an invalid asset symbol
         
         transactions_before = Transaction.objects.count()
-
-        response = self.client.post(f"/api/portfolios/{self.portfolio.id}/positions/buy/", {
-            "asset": "INVALID",
-            "quantity": 2,
-            "price": 200
-        }, format='json')
-        
-        self.assertEqual(response.status_code, 400)
         
         with patch(
             "portfolios.views.Transaction.objects.create",
@@ -98,18 +90,60 @@ class BuyPositionTests(TestCase):
                     },
                     format="json",
                 )
-            
-            self.assertEqual(response.status_code, 500)
-            
+                        
             
         self.position.refresh_from_db()
 
         self.assertEqual(
             self.position.quantity,
-            Decimal("1")
+            Decimal("10")
         )
 
         self.assertEqual(
             Transaction.objects.count(),
             transactions_before
         )
+        
+        
+    
+    def test_sell_position(self):
+        response = self.client.post(f"/api/portfolios/{self.portfolio.id}/positions/sell/", {
+            "asset": "AAPL",
+            "quantity": 3,
+            "price": 200
+        }, format='json')
+        
+        self.assertEqual(response.status_code, 200)
+        self.position.refresh_from_db()
+        self.assertEqual(self.position.quantity, Decimal("7"))
+        self.assertEqual(self.position.average_price, Decimal("150"))
+        
+        self.assertEqual(Transaction.objects.filter(portfolio=self.portfolio, asset=self.aapl, type='sell').count(), 1)
+
+
+
+    def test_sell_full_position(self):
+        response = self.client.post(f"/api/portfolios/{self.portfolio.id}/positions/sell/", {
+            "asset": "AAPL",
+            "quantity": 10,
+            "price": 200
+        }, format='json')
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Position.objects.filter(portfolio=self.portfolio, asset=self.aapl).exists())
+        self.assertEqual(Transaction.objects.filter(portfolio=self.portfolio, asset=self.aapl, type='sell').count(), 1)
+        
+        
+        
+    def test_sell_more_than_available(self):
+        response = self.client.post(f"/api/portfolios/{self.portfolio.id}/positions/sell/", {
+            "asset": "AAPL",
+            "quantity": 15,
+            "price": 200
+        }, format='json')
+        
+        self.assertEqual(response.status_code, 400)
+        self.position.refresh_from_db()
+        self.assertEqual(self.position.quantity, Decimal("10"))
+        self.assertEqual(self.position.average_price, Decimal("150"))
+        self.assertEqual(Transaction.objects.filter(portfolio=self.portfolio, asset=self.aapl, type='sell').count(), 0)

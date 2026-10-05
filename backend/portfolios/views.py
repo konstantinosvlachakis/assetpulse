@@ -6,7 +6,9 @@ from rest_framework.response import Response
 from assets.models import Asset
 
 from .models import Portfolio, Position, Transaction
-from .serializers import PortfolioSerializer, BuyPositionSerializer
+from .serializers import PortfolioSerializer, PositionTransactionSerializer
+from rest_framework.exceptions import ValidationError
+
 # Create your views here.
 
 class PortfolioListView(APIView):
@@ -37,35 +39,54 @@ class PortfolioDetailView(APIView):
 
 class PositionView(APIView):
     
-    def post(self, request, id):
+    def post(self, request, id, transaction_type):
+        
+        if transaction_type not in ['buy', 'sell']:
+            raise ValidationError({"transaction_type": "Invalid transaction type. Must be 'buy' or 'sell'."})
         
         portfolio = Portfolio.objects.get(id=id)
-        serializer = BuyPositionSerializer(data=request.data)
+        serializer = PositionTransactionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        asset = serializer.validated_data["asset"]
+        asset_symbol = serializer.validated_data["asset"]
         quantity = serializer.validated_data["quantity"]
         price = serializer.validated_data["price"]
+        asset = Asset.objects.get(symbol=asset_symbol)
        
         with transaction.atomic():
-            position, created = Position.objects.select_for_update().get_or_create(
-                portfolio=portfolio,
-                asset=asset,
-                defaults={"quantity": quantity, "average_price": price},
-            )
-
-            if not created:
-                # Update the existing position
-                old_cost = position.average_price * position.quantity
-                new_cost = price * quantity
-                new_quantity = position.quantity + quantity
-                new_average_price = (old_cost + new_cost) / new_quantity
-                position.quantity = new_quantity
-                position.average_price = new_average_price
-                position.save()
+            if transaction_type == 'buy':
+                position, created = Position.objects.select_for_update().get_or_create(
+                    portfolio=portfolio,
+                    asset=asset,
+                    defaults={"quantity": quantity, "average_price": price},
+                )
+                if not created:
+                    # Update the existing position
+                    old_cost = position.average_price * position.quantity
+                    new_cost = price * quantity
+                    new_quantity = position.quantity + quantity
+                    new_average_price = (old_cost + new_cost) / new_quantity
+                    position.quantity = new_quantity
+                    position.average_price = new_average_price
+                    position.save()
+                         
+            else:
+                position = Position.objects.select_for_update().get(
+                    portfolio=portfolio,
+                    asset=asset,
+                )
+                if quantity > position.quantity:
+                    raise ValidationError(
+                        {"quantity": "Selling quantity cannot exceed current position quantity."}
+                    )
+                position.quantity -= quantity
+                if position.quantity == 0:
+                    position.delete()
+                else:
+                    position.save()
                 
             Transaction.objects.create(
                 asset=asset,
-                type='buy',
+                type=transaction_type,
                 portfolio=portfolio,
                 quantity=quantity,
                 price=price
