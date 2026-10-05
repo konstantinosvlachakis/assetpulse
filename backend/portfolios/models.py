@@ -53,8 +53,21 @@ class Transaction(models.Model):
     
     class Meta:
         constraints = [
-            models.CheckConstraint(check=models.Q(quantity__gt=0), name='quantity_positive'),
-            models.CheckConstraint(check=models.Q(price__gt=0), name='price_positive'),
+            models.CheckConstraint(
+                check=models.Q(quantity__gt=0),
+                name="quantity_positive",
+            ),
+            models.CheckConstraint(
+                check=models.Q(price__gt=0),
+                name="price_positive",
+            ),
+        ]
+
+        indexes = [
+            models.Index(
+                fields=["portfolio", "-created_at"],
+                name="portfolio_created_idx",
+            ),
         ]
         
     def __str__(self):
