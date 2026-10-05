@@ -1,7 +1,11 @@
 from decimal import Decimal
 from urllib import response
 
-from django.test import TestCase
+from django.db import transaction
+from django.test import TestCase, TransactionTestCase
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from unittest.mock import patch
@@ -147,3 +151,102 @@ class BuyPositionTests(TestCase):
         self.assertEqual(self.position.quantity, Decimal("10"))
         self.assertEqual(self.position.average_price, Decimal("150"))
         self.assertEqual(Transaction.objects.filter(portfolio=self.portfolio, asset=self.aapl, type='sell').count(), 0)
+        
+        
+        
+
+class SellPositionConcurrencyTests(TransactionTestCase):
+
+    def setUp(self):
+        User = get_user_model()
+
+        self.user = User.objects.create_user(
+            username="concurrentuser",
+            password="testpassword"
+        )
+
+        self.portfolio = Portfolio.objects.create(
+            user=self.user,
+            name="Concurrency Portfolio",
+            type="main portfolio",
+        )
+
+        self.aapl = Asset.objects.create(
+            symbol="AAPL",
+            name="Apple Inc.",
+            asset_type="stock",
+        )
+
+        self.position = Position.objects.create(
+            portfolio=self.portfolio,
+            asset=self.aapl,
+            quantity=Decimal("10"),
+            average_price=Decimal("150"),
+        )
+        
+    
+    def sell(self, quantity, barrier):
+        barrier.wait()
+        with transaction.atomic():
+            position = Position.objects.select_for_update().get(
+                portfolio=self.portfolio,
+                asset=self.aapl
+            )
+            if position.quantity < quantity:
+                raise ValueError("Not enough quantity to sell")
+            position.quantity -= quantity
+            if position.quantity == 0:
+                position.delete()
+            else:
+                position.save()
+            Transaction.objects.create(
+                portfolio=self.portfolio,
+                asset=self.aapl,
+                type='sell',
+                quantity=quantity,
+                price=Decimal("200"),
+            )
+            
+            
+            
+    def test_concurrent_sells_do_not_oversell(self):
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            barrier = Barrier(2)
+            future_a = executor.submit(self.sell, Decimal("7"), barrier)
+            future_b = executor.submit(self.sell, Decimal("6"), barrier)
+
+            results = [future_a, future_b]
+            
+            successes = 0
+            failures = 0
+            
+            for future in results:
+                try:
+                    future.result()
+                    successes += 1
+                except ValueError:
+                    failures += 1
+                    
+            self.assertEqual(successes, 1)
+            self.assertEqual(failures, 1)
+            
+            position = Position.objects.get(
+                portfolio=self.portfolio,
+                asset=self.aapl,
+            )
+
+            self.assertIn(
+                position.quantity,
+                [Decimal("3"), Decimal("4")]
+            )
+
+            self.assertEqual(
+                Transaction.objects.filter(
+                    portfolio=self.portfolio,
+                    asset=self.aapl,
+                    type="sell",
+                ).count(),
+                1,
+            )
+            
+            
