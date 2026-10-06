@@ -11,7 +11,6 @@ from rest_framework.test import APIClient
 from unittest.mock import patch
 # Create your tests here.
 
-
 from .models import Portfolio, Position, Transaction
 from assets.models import Asset
 class BuyPositionTests(TestCase):
@@ -21,11 +20,13 @@ class BuyPositionTests(TestCase):
         
         User = get_user_model()
         self.user = User.objects.create_user(username="testuser", password="testpassword")
+        self.client.force_authenticate(user=self.user)
         self.portfolio = Portfolio.objects.create(user=self.user, name="Test Portfolio", type="main portfolio")
         self.aapl = Asset.objects.create(symbol="AAPL", name="Apple Inc.", asset_type="stock")
         self.googl = Asset.objects.create(symbol="GOOGL", name="Alphabet Inc.", asset_type="stock")
         self.position = Position.objects.create(portfolio=self.portfolio, asset=self.aapl, quantity=10, average_price=150)
         self.transaction = Transaction.objects.create(portfolio=self.portfolio, asset=self.aapl, type='buy', quantity=1, price=150)
+        
         
         
         
@@ -250,3 +251,84 @@ class SellPositionConcurrencyTests(TransactionTestCase):
             )
             
             
+            
+            
+class PositionAuthorizationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+        User = get_user_model()
+
+        self.user = User.objects.create_user(
+            username="testuser",
+            password="testpassword",
+        )
+
+        self.portfolio = Portfolio.objects.create(
+            user=self.user,
+            name="Test Portfolio",
+            type="main portfolio",
+        )
+
+        self.aapl = Asset.objects.create(
+            symbol="AAPL",
+            name="Apple Inc.",
+            asset_type="stock",
+        )
+
+        self.position = Position.objects.create(
+            portfolio=self.portfolio,
+            asset=self.aapl,
+            quantity=Decimal("10"),
+            average_price=Decimal("150"),
+        )
+
+    def test_owner_can_view_portfolio_detail(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(f"/api/portfolios/{self.portfolio.id}/")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_other_user_cannot_view_portfolio_detail(self):
+        other_user = get_user_model().objects.create_user(
+            username="otheruser", password="testpassword"
+        )
+        self.client.force_authenticate(user=other_user)
+
+        response = self.client.get(f"/api/portfolios/{self.portfolio.id}/")
+
+        self.assertEqual(response.status_code, 404)
+        
+        
+    def test_user_cannot_sell_from_another_users_portfolio(self):
+        
+        User = get_user_model()
+        other_user = get_user_model().objects.create_user(
+            username="otheruser",
+            password="testpassword"
+        )
+        
+        self.client.force_authenticate(user=other_user)
+        
+        response = self.client.post(f"/api/portfolios/{self.portfolio.id}/positions/sell/", {
+            "asset": "AAPL",
+            "quantity": 5,
+            "price": 200
+        }, format='json')
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(Position.objects.get(portfolio=self.portfolio, asset=self.aapl).quantity, Decimal("10"))
+        self.assertEqual(Transaction.objects.filter(portfolio=self.portfolio, asset=self.aapl, type='sell').count(), 0)
+
+
+
+
+    def test_non_authenticated_user_cannot_sell(self):
+        response = self.client.post(f"/api/portfolios/{self.portfolio.id}/positions/sell/", {
+            "asset": "AAPL",
+            "quantity": 5,
+            "price": 200
+        }, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Position.objects.get(portfolio=self.portfolio, asset=self.aapl).quantity, Decimal("10"))
+        self.assertEqual(Transaction.objects.filter(portfolio=self.portfolio, asset=self.aapl, type='sell').count(), 0)

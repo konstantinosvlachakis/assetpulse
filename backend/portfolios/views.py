@@ -1,5 +1,7 @@
 from django.db import transaction
 from django.db.models import Prefetch
+from django.shortcuts import get_object_or_404
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -8,6 +10,8 @@ from assets.models import Asset
 from .models import Portfolio, Position, Transaction
 from .serializers import PortfolioSerializer, PositionTransactionSerializer
 from rest_framework.exceptions import ValidationError
+
+from rest_framework.permissions import IsAuthenticated
 
 # Create your views here.
 
@@ -20,16 +24,20 @@ class PortfolioListView(APIView):
         return  Response(serializer.data)
 
 class PortfolioDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, id):
-        portfolio = (
+        user = request.user
+        portfolio = get_object_or_404(
             Portfolio.objects
             .prefetch_related(
                 Prefetch(
                     "positions",
                     queryset=Position.objects.select_related("asset"),
                 )
-            )
-            .get(id=id)
+            ),
+            id=id,
+            user=user,
         )
         serializer = PortfolioSerializer(portfolio)
         
@@ -39,12 +47,13 @@ class PortfolioDetailView(APIView):
 
 class PositionView(APIView):
     
+    permission_classes = [IsAuthenticated]
+    
     def post(self, request, id, transaction_type):
         
         if transaction_type not in ['buy', 'sell']:
             raise ValidationError({"transaction_type": "Invalid transaction type. Must be 'buy' or 'sell'."})
-        
-        portfolio = Portfolio.objects.get(id=id)
+        portfolio = get_object_or_404(Portfolio, id=id, user=request.user)
         serializer = PositionTransactionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         asset_symbol = serializer.validated_data["asset"]
