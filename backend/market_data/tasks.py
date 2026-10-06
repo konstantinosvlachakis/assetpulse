@@ -1,4 +1,5 @@
 from celery import shared_task
+from django.core.cache import cache
 from market_data.services.market_provider import TemporaryProviderError
 from market_data.services.market_data_service import MarketDataService
 import requests
@@ -26,6 +27,8 @@ def sync_asset_prices(symbol):
     try:
         service = MarketDataService()
         service.fetch_and_store_daily_prices(symbol)
+        cache.delete(f"market_data:prices:{symbol}:latest")
+        cache.delete(f"market_data:prices:all")
     finally:
         lock.release()
     

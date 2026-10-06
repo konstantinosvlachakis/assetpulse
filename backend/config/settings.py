@@ -30,7 +30,7 @@ SECRET_KEY = "django-insecure--j=lkf$s^q&g5-ii-2-mfo_q8w$zbj9b2nkbry!r&67zzq+xu=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
 
 
 # Application definition
@@ -140,3 +140,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
+
+
+CACHES= {
+    
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL"),
+    }
+}
