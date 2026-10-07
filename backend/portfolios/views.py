@@ -59,7 +59,7 @@ class PositionView(APIView):
         asset_symbol = serializer.validated_data["asset"]
         quantity = serializer.validated_data["quantity"]
         price = serializer.validated_data["price"]
-        asset = Asset.objects.get(symbol=asset_symbol)
+        asset = get_object_or_404(Asset, symbol=asset_symbol)
        
         with transaction.atomic():
             if transaction_type == 'buy':
@@ -79,7 +79,8 @@ class PositionView(APIView):
                     position.save()
                          
             else:
-                position = Position.objects.select_for_update().get(
+                
+                position = get_object_or_404(Position.objects.select_for_update(), 
                     portfolio=portfolio,
                     asset=asset,
                 )
