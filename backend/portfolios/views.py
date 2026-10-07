@@ -13,6 +13,8 @@ from rest_framework.exceptions import ValidationError
 
 from rest_framework.permissions import IsAuthenticated
 
+import uuid
+
 # Create your views here.
 
 class PortfolioListView(APIView):
@@ -63,6 +65,11 @@ class PositionView(APIView):
         idempotency_key = request.headers.get("Idempotency-Key") 
         if not idempotency_key:
             raise ValidationError({"Idempotency-Key": "This header is required."})
+        
+        try:
+            idempotency_key = uuid.UUID(idempotency_key)
+        except ValueError:
+            raise ValidationError({"Idempotency-Key": "Invalid UUID format."})
             
        
         with transaction.atomic():
