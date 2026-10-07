@@ -60,6 +60,10 @@ class PositionView(APIView):
         quantity = serializer.validated_data["quantity"]
         price = serializer.validated_data["price"]
         asset = get_object_or_404(Asset, symbol=asset_symbol)
+        idempotency_key = request.headers.get("Idempotency-Key") 
+        if not idempotency_key:
+            raise ValidationError({"Idempotency-Key": "This header is required."})
+            
        
         with transaction.atomic():
             if transaction_type == 'buy':
@@ -99,7 +103,8 @@ class PositionView(APIView):
                 type=transaction_type,
                 portfolio=portfolio,
                 quantity=quantity,
-                price=price
+                price=price,
+                idempotency_key= idempotency_key
             )
 
         return Response({"message": "Position updated successfully."})

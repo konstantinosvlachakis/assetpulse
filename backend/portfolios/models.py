@@ -2,6 +2,8 @@ from django.db import models
 
 from django.conf import settings
 
+import uuid
+
 # Create your models here.
 TRANSACTION_TYPES=[
     ('buy', 'Buy'),
@@ -50,6 +52,7 @@ class Transaction(models.Model):
     quantity = models.DecimalField(max_digits=20, decimal_places=4)
     price = models.DecimalField(max_digits=20, decimal_places=4)
     created_at = models.DateTimeField(auto_now_add=True)
+    idempotency_key = models.UUIDField(unique=True, null=True)
     
     class Meta:
         constraints = [
