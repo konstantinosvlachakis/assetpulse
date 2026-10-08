@@ -1,4 +1,4 @@
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 
@@ -9,15 +9,23 @@ from assets.models import Asset
 
 from .models import Portfolio, Position, Transaction
 from .serializers import PortfolioSerializer, PositionTransactionSerializer
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import APIException, ValidationError
 
 from rest_framework.permissions import IsAuthenticated
 
 import uuid
 
+
+class IdempotencyConflictError(APIException):
+    status_code = 409
+    default_detail = "The idempotency key was already used for a different request."
+    default_code = "idempotency_conflict"
+
+
 # Create your views here.
 
 class PortfolioListView(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request):
         portfolios = Portfolio.objects.prefetch_related(Prefetch("positions", queryset=Position.objects.select_related("asset")))
         serializer = PortfolioSerializer(portfolios, many=True)
@@ -70,48 +78,94 @@ class PositionView(APIView):
             idempotency_key = uuid.UUID(idempotency_key)
         except ValueError:
             raise ValidationError({"Idempotency-Key": "Invalid UUID format."})
-            
-       
-        with transaction.atomic():
-            if transaction_type == 'buy':
-                position, created = Position.objects.select_for_update().get_or_create(
-                    portfolio=portfolio,
-                    asset=asset,
-                    defaults={"quantity": quantity, "average_price": price},
-                )
-                if not created:
-                    # Update the existing position
-                    old_cost = position.average_price * position.quantity
-                    new_cost = price * quantity
-                    new_quantity = position.quantity + quantity
-                    new_average_price = (old_cost + new_cost) / new_quantity
-                    position.quantity = new_quantity
-                    position.average_price = new_average_price
-                    position.save()
-                         
+        
+        existing_transaction = Transaction.objects.filter(idempotency_key=idempotency_key).first()
+        if existing_transaction:
+            if self.is_same_operation(
+                existing_transaction, portfolio, asset, transaction_type, quantity, price
+            ):
+                return Response({"message": "Transaction already processed."})
             else:
-                
-                position = get_object_or_404(Position.objects.select_for_update(), 
-                    portfolio=portfolio,
-                    asset=asset,
+                raise IdempotencyConflictError(
+                    "A transaction with this Idempotency-Key already exists but with different details."
                 )
-                if quantity > position.quantity:
-                    raise ValidationError(
-                        {"quantity": "Selling quantity cannot exceed current position quantity."}
+
+        try:
+            with transaction.atomic():
+                if transaction_type == 'buy':
+                    position, created = Position.objects.select_for_update().get_or_create(
+                        portfolio=portfolio,
+                        asset=asset,
+                        defaults={"quantity": quantity, "average_price": price},
                     )
-                position.quantity -= quantity
-                if position.quantity == 0:
-                    position.delete()
+                    if not created:
+                        # Update the existing position
+                        old_cost = position.average_price * position.quantity
+                        new_cost = price * quantity
+                        new_quantity = position.quantity + quantity
+                        new_average_price = (old_cost + new_cost) / new_quantity
+                        position.quantity = new_quantity
+                        position.average_price = new_average_price
+                        position.save()
+                            
                 else:
-                    position.save()
+                    
+                    position = get_object_or_404(Position.objects.select_for_update(), 
+                        portfolio=portfolio,
+                        asset=asset,
+                    )
+                    if quantity > position.quantity:
+                        raise ValidationError(
+                            {"quantity": "Selling quantity cannot exceed current position quantity."}
+                        )
+                    position.quantity -= quantity
+                    if position.quantity == 0:
+                        position.delete()
+                    else:
+                        position.save()
+                    
+                Transaction.objects.create(
+                    asset=asset,
+                    type=transaction_type,
+                    portfolio=portfolio,
+                    quantity=quantity,
+                    price=price,
+                    idempotency_key=idempotency_key
+                )
                 
-            Transaction.objects.create(
-                asset=asset,
-                type=transaction_type,
-                portfolio=portfolio,
-                quantity=quantity,
-                price=price,
-                idempotency_key= idempotency_key
+        except IntegrityError:
+            existing_transaction = Transaction.objects.filter(
+                idempotency_key=idempotency_key
+            ).first()
+
+            if existing_transaction is None:
+                raise
+
+            if self.is_same_operation(
+                existing_transaction,
+                portfolio,
+                asset,
+                transaction_type,
+                quantity,
+                price,
+            ):
+                return Response({
+                    "message": "Transaction already processed."
+                })
+
+            raise IdempotencyConflictError(
+                "Idempotency-Key already used for a different operation."
             )
 
         return Response({"message": "Position updated successfully."})
+
+
+    @staticmethod
+    def is_same_operation(existing, portfolio, asset, transaction_type, quantity, price):
+        return (
+            existing.portfolio_id == portfolio.id
+            and existing.asset_id == asset.id
+            and existing.type == transaction_type
+            and existing.quantity == quantity
+            and existing.price == price
+        )
