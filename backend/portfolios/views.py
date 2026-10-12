@@ -27,7 +27,8 @@ class IdempotencyConflictError(APIException):
 class PortfolioListView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
-        portfolios = Portfolio.objects.prefetch_related(Prefetch("positions", queryset=Position.objects.select_related("asset")))
+        user = request.user
+        portfolios = Portfolio.objects.prefetch_related(Prefetch("positions", queryset=Position.objects.select_related("asset"))).filter(user=user)
         serializer = PortfolioSerializer(portfolios, many=True)
         
         

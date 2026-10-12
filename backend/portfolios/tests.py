@@ -1,5 +1,5 @@
 from decimal import Decimal
-from urllib import response
+import uuid
 
 from django.db import transaction
 from django.test import TestCase, TransactionTestCase
@@ -17,6 +17,7 @@ class BuyPositionTests(TestCase):
     
     def setUp(self):
         self.client = APIClient()
+        self.client.credentials(HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()))
         
         User = get_user_model()
         self.user = User.objects.create_user(username="testuser", password="testpassword")
@@ -77,7 +78,7 @@ class BuyPositionTests(TestCase):
         
     
     def test_buy_rolls_back_when_transaction_fails(self):
-        # Simulate a failure by providing an invalid asset symbol
+        # Simulate a failure while recording a valid purchase.
         
         transactions_before = Transaction.objects.count()
         
@@ -329,6 +330,48 @@ class PositionAuthorizationTests(TestCase):
             "quantity": 5,
             "price": 200
         }, format='json')
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
         self.assertEqual(Position.objects.get(portfolio=self.portfolio, asset=self.aapl).quantity, Decimal("10"))
         self.assertEqual(Transaction.objects.filter(portfolio=self.portfolio, asset=self.aapl, type='sell').count(), 0)
+
+
+class PortfolioListViewTests(TestCase):
+
+    def test_user_sees_only_their_portfolios(self):
+        User = get_user_model()
+        user1 = User.objects.create_user(username="user1", password="testpassword")
+        user2 = User.objects.create_user(username="user2", password="testpassword")
+
+        portfolio1 = Portfolio.objects.create(user=user1, name="User 1 Portfolio", type="main portfolio")
+        Portfolio.objects.create(user=user2, name="User 2 Portfolio", type="main portfolio")
+
+        client = APIClient()
+        client.force_authenticate(user=user1)
+
+        response = client.get("/api/portfolios/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['id'], portfolio1.id)
+
+    def test_user_sees_empty_list_if_no_portfolios(self):
+        User = get_user_model()
+        user = User.objects.create_user(username="user", password="testpassword")
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        other_user = User.objects.create_user(
+            username="other",
+            password="testpassword",
+        )
+        Portfolio.objects.create(
+            user=other_user,
+            name="Other user's portfolio",
+            type="main portfolio",
+        )
+
+        response = client.get("/api/portfolios/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 0)
