@@ -12,6 +12,7 @@ from .serializers import PortfolioSerializer, PositionTransactionSerializer
 from rest_framework.exceptions import APIException, ValidationError
 
 from rest_framework.permissions import IsAuthenticated
+from portfolios.services import InsufficientQuantityError
 
 import uuid
 
@@ -100,7 +101,10 @@ class PositionView(APIView):
                 else:
                     from portfolios.services import sell_positions
                     sell_positions(portfolio, asset, quantity, price, idempotency_key)
-                
+                    
+        except InsufficientQuantityError as exc:
+            raise ValidationError({"detail": str(exc)})
+
         except IntegrityError:
             existing_transaction = Transaction.objects.filter(
                 idempotency_key=idempotency_key
