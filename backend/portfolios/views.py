@@ -94,45 +94,12 @@ class PositionView(APIView):
         try:
             with transaction.atomic():
                 if transaction_type == 'buy':
-                    position, created = Position.objects.select_for_update().get_or_create(
-                        portfolio=portfolio,
-                        asset=asset,
-                        defaults={"quantity": quantity, "average_price": price},
-                    )
-                    if not created:
-                        # Update the existing position
-                        old_cost = position.average_price * position.quantity
-                        new_cost = price * quantity
-                        new_quantity = position.quantity + quantity
-                        new_average_price = (old_cost + new_cost) / new_quantity
-                        position.quantity = new_quantity
-                        position.average_price = new_average_price
-                        position.save()
+                    from portfolios.services import buy_positions
+                    buy_positions(portfolio, asset, quantity, price, idempotency_key)
                             
                 else:
-                    
-                    position = get_object_or_404(Position.objects.select_for_update(), 
-                        portfolio=portfolio,
-                        asset=asset,
-                    )
-                    if quantity > position.quantity:
-                        raise ValidationError(
-                            {"quantity": "Selling quantity cannot exceed current position quantity."}
-                        )
-                    position.quantity -= quantity
-                    if position.quantity == 0:
-                        position.delete()
-                    else:
-                        position.save()
-                    
-                Transaction.objects.create(
-                    asset=asset,
-                    type=transaction_type,
-                    portfolio=portfolio,
-                    quantity=quantity,
-                    price=price,
-                    idempotency_key=idempotency_key
-                )
+                    from portfolios.services import sell_positions
+                    sell_positions(portfolio, asset, quantity, price, idempotency_key)
                 
         except IntegrityError:
             existing_transaction = Transaction.objects.filter(
