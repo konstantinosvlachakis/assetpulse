@@ -3,8 +3,8 @@ import os
 import requests
 from dotenv import load_dotenv
 
-
 load_dotenv()
+
 
 class TemporaryProviderError(Exception):
     """Custom exception for temporary provider errors."""
@@ -32,11 +32,12 @@ class AlphaVantageProvider:
         )
         
         if response.status_code == 503:
-            raise TemporaryProviderError("Alpha Vantage service is temporarily unavailable.")
-        
+            raise TemporaryProviderError(
+                "Alpha Vantage service is temporarily unavailable."
+            )
+
         response.raise_for_status()
 
-  
         data = response.json()
         time_series = data.get("Time Series (Daily)", {})
         
@@ -51,3 +52,15 @@ class AlphaVantageProvider:
             })
         
         return prices
+
+
+class FallbackProvider:
+    def __init__(self, primary, backup):
+        self.primary = primary
+        self.backup = backup
+        
+    def get_daily_prices(self, symbol):
+        try:
+            return self.primary.get_daily_prices(symbol)
+        except TemporaryProviderError:
+            return self.backup.get_daily_prices(symbol)

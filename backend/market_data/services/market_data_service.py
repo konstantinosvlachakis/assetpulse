@@ -1,13 +1,16 @@
 from assets.models import Asset
 from market_data.models import Price
-from market_data.services.market_provider import AlphaVantageProvider
+from market_data.services.market_provider import AlphaVantageProvider, FakeProvider
+
 
 class MarketDataService:
-    def __init__(self):
-        self.provider = AlphaVantageProvider()
-    
+    def __init__(self, provider):
+        # self.provider = AlphaVantageProvider()
+        self.provider = provider
+
     def fetch_and_store_daily_prices(self, symbol):
         asset = Asset.objects.get(symbol=symbol)
+        
         daily_prices = self.provider.get_daily_prices(symbol)
 
         print("Asset:", asset)
@@ -28,7 +31,7 @@ class MarketDataService:
         Price.objects.bulk_create(
             prices,
             update_conflicts=True,
-            update_fields=["open_price", "high_price", "low_price", "close_price"],
+            update_fields=["open_price", "high_price", "low_price",
+                           "close_price"],
             unique_fields=["asset", "date"],
         )
-                   
