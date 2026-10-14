@@ -64,3 +64,13 @@ class FallbackProvider:
             return self.primary.get_daily_prices(symbol)
         except TemporaryProviderError:
             return self.backup.get_daily_prices(symbol)
+
+
+class UnavailableProvider:
+    def get_daily_prices(self, symbol):
+        raise TemporaryProviderError("Provider unavailable")
+
+
+class FakeProvider:
+    def get_daily_prices(self, symbol):
+        return [{"symbol": symbol, "close": 100}]
